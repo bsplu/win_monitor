@@ -8,6 +8,7 @@
 #include<time.h>
 #include<sstream>
 #include<string>
+#include <windows.h>
 
 using namespace System;
 using namespace System::IO;
@@ -17,13 +18,17 @@ using namespace System::Runtime::InteropServices;
 
 
 //Function Name
-string GetFileNameFromeFullPath(string FullPath);
+string GetFileNameFromFullPath(string FullPath);
 int ScreenFileType(FileSystemEventArgs^ e);
 int PositionOfSysList(string FileNameFullPath,int pstart);
-int BackUpFile(string FileNameFullPath);
+DWORD WINAPI BackUpFile(LPVOID lpParam);
 string GetTarFileName();
 string GetUserName();//NOT
 string GetBackUpPath();//NOT
+bool JumpWatherOnCreated(FileSystemEventArgs^ e);
+bool JumpWatherOnChanged(FileSystemEventArgs^ e);
+bool JumpWatherOnDeleted(FileSystemEventArgs^ e);
+bool JumpWatherOnRenamed(FileSystemEventArgs^ e);
 
 
 //class name
@@ -40,6 +45,7 @@ public:
 	string BoxName;//box名称
 	string FullPath;//文件在磁盘的路径
 	string BoxFullPath;//box中的虚拟文件夹路径,构成  BoxName::虚拟文件夹名/文件名
+	int handle;
 
 	SysFile(){
 
@@ -47,6 +53,7 @@ public:
 		BoxName = "";
 		FullPath = "";
 		BoxFullPath = "";
+		handle = 0;
 	}
 
 	//默认文件储存在box的根目录下
@@ -54,14 +61,14 @@ public:
 
 		FullPath = FullPath_input;
 		BoxName = BoxName_input;
-		FileName = GetFileNameFromeFullPath(FullPath);
+		FileName = GetFileNameFromFullPath(FullPath);
 		BoxFullPath = BoxName+"::"+FileName;
 	}
 
 	SysFile(string FullPath_input,string BoxName_input,string BoxFullPath){
 
 		FullPath = FullPath_input;
-		FileName = GetFileNameFromeFullPath(FullPath);
+		FileName = GetFileNameFromFullPath(FullPath);
 		BoxName = BoxName_input;
 		BoxFullPath = BoxFullPath;
 	}
@@ -78,7 +85,7 @@ public:
 	void addSysFile(string FullPath_input,string BoxName_input){
 		FullPath = FullPath_input;
 		BoxName = BoxName_input;
-		FileName = GetFileNameFromeFullPath(FullPath);
+		FileName = GetFileNameFromFullPath(FullPath);
 		BoxFullPath = BoxName+"::"+FileName;
 	}
 };
@@ -91,11 +98,11 @@ int numSaved_SysFileList = 0;
 
 
 //从全路径截取出文件名
-string GetFileNameFromeFullPath(string FullPath){
+string GetFileNameFromFullPath(string FullPath){
 
 
 	string FileName;
-	FileName = FullPath.substr(FullPath.find_last_of('/')+1);
+	FileName = FullPath.substr(FullPath.find_last_of('\\')+1);
 
 
 	return FileName;
@@ -135,6 +142,7 @@ int PositionOfSysList(string FileNameFullPath,int pstart = 1){
 
 	int position = pstart-1;
 
+
 	for(;position<numSaved_SysFileList;position++){
 		if(FileNameFullPath == SysFileList[position].FullPath){
 			return position+1;
@@ -172,7 +180,7 @@ string GetTarFileName(){
 		stringstream stime;
 		stime << int(time(NULL));
 
-		tarfilename = (stime.str() + ":" + GetUserName() + ".tar.gz").c_str();
+		tarfilename = (stime.str() + "_" + GetUserName() + ".zip").c_str();
 
 		return tarfilename;
 }
@@ -182,15 +190,26 @@ string GetTarFileName(){
 //in:FileNameFullPath
 //out:0不是备份文件
 //	-1备份失败
-int BackUpFile(string FileNameFullPath){
+DWORD WINAPI BackUpFile(LPVOID lpParam){
 
+	string FileNameFullPath = string((char*)(lpParam));
 	int position = 1;
 	string backupfilename = GetTarFileName();
 
-	if(position = PositionOfSysList(FileNameFullPath) >0 ){
+	position = PositionOfSysList(FileNameFullPath);
+	SysFileList[position].handle = GetCurrentThreadId();
+
+	
+
+	if( position>0 ){
+
+		Sleep(1000);
+		if(SysFileList[position].handle != GetCurrentThreadId())
+			return 0;
+
 		//调用压缩备份函数
 		cout<<"备份"<<endl;
-		system(("tar -zcvf " + FileNameFullPath + " " + GetBackUpPath() + backupfilename + "--force-local").c_str());
+		system(("makecab /d compressiontype=mszip " + FileNameFullPath + " " + GetBackUpPath() + backupfilename + ">" + " " + GetBackUpPath() + "log").c_str());
 
 	}else{
 		return 0;
@@ -201,13 +220,81 @@ int BackUpFile(string FileNameFullPath){
 		//找到box的备份文档，将更改信息添加进去
 		//NOT
 		break;
-
-	}while((position = PositionOfSysList(FileNameFullPath,position))>=0);
+		(position = PositionOfSysList(FileNameFullPath,position));
+	}while(position>=0);
 
 	return 1;
 }
 
 
+bool JumpWatherOnCreated(FileSystemEventArgs^ e){
+
+	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+
+
+	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+		return true;
+	}else if(FileName.find_first_of("$") == 0){
+		return true;
+	}else if(FileName.find_first_of("~$") == 0){
+		return true;
+	}else if(FileName.find_first_of('~') == 0){
+		return true;
+	}
+
+	return false;
+}
+bool JumpWatherOnChanged(FileSystemEventArgs^ e){
+	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+
+	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+		return true;
+	}else if(FileName.find_first_of("$") == 0){
+		return true;
+	}else if(FileName.find_first_of("~$") == 0){
+		return true;
+	}else if(FileName.find_first_of("~") == 0){
+		return true;
+	}else if((ScreenFileType(e) & _A_SUBDIR) != 0 ){//文件为文件夹
+		return true;
+	}
+
+	return false;
+}
+
+bool JumpWatherOndeleted(FileSystemEventArgs^ e){
+	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+
+	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+		return true;
+	}else if(FileName.find_first_of("$") == 0){
+		return true;
+	}else if(FileName.find_first_of("~$") == 0){
+		return true;
+	}else if(FileName.find_first_of("~") == 0){
+		return true;
+	}
+
+	return false;
+}
+
+bool JumpWatherOnRenamed(RenamedEventArgs^ e){
+	string FileNameNew = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+	string FileNameOld = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
+
+	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+		return true;
+	}else if(FileNameNew.find_first_of("$") == 0){
+		return true;
+	}else if(FileNameNew.find_first_of("~$") == 0){
+		return true;
+	}else if(FileNameNew.find_first_of("~") == 0){
+		return true;
+	}
+
+	return false;
+
+}
 public ref class Watcher
 {
 private:
@@ -215,17 +302,17 @@ private:
    static void OnCreated( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is created.
-		if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+		if(JumpWatherOnCreated(e)){
 				return ;
 		}
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 	  
    }
 
-      static void OnDeleted( Object^ /*source*/, FileSystemEventArgs^ e )
+     static void OnDeleted( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
-	   	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+	   if(JumpWatherOndeleted(e)){
 				return ;
 		}
 		Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
@@ -235,28 +322,31 @@ private:
       static void OnChanged( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
-		if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
+	   if(JumpWatherOnChanged(e)){
 				return ;
 		}
 
-		//文件为文件夹
-		if((ScreenFileType(e) & _A_SUBDIR) != 0 ){
-			return ;
-		}
 		
 		//PositionOfSysList((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
 		
 
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 
-	  //BackUpFile((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath), 0, NULL);
+
 	  
    }
 
    static void OnRenamed( Object^ /*source*/, RenamedEventArgs^ e )
    {
       // Specify what is done when a file is renamed.
+	   if(JumpWatherOnRenamed(e)){
+			return ;
+	   }
       Console::WriteLine( "File: {0} renamed to {1}", e->OldFullPath, e->FullPath );
+
+	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath), 0, NULL);
+
    }
 
 public:
@@ -306,7 +396,8 @@ public:
 	  
       // Wait for the user to quit the program.
       Console::WriteLine( "Press \'q\' to quit the sample." );
-	  while ( Console::Read() != 'q' );//当检测的文件或文件夹被删除时也应结束掉任务
+	  
+	  while ( Console::Read() != 'q');//当检测的文件或文件夹被删除时也应结束掉任务
 
       return 0;
    }
@@ -315,11 +406,15 @@ public:
 int main() {
 
 	//test
-	SysFileList[0].addSysFile("D:\\test\1.txt","testbox");
-	len_SysFileList = 1;
+	SysFileList[0].addSysFile("D:\\test\\1.txt","testbox");
+	numSaved_SysFileList = 1;
+
+	SysFileList[1].addSysFile("D:\\test\\2.docx","testbox");
+	numSaved_SysFileList ++;
 
 
 	//应该创建多个进程，每个盘符创建一个
    Watcher::monitor("D:\\");
+
 	//outchange();
 }
