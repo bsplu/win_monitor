@@ -38,14 +38,18 @@ class SysFile;
 
 //Function & class 定义
 
+/*
+  该类主要是将文件信息整合当到一个地方
+*/
 class SysFile{
 
 public:
 	string FileName;
 	string BoxName;//box名称
 	string FullPath;//文件在磁盘的路径
-	string BoxFullPath;//box中的虚拟文件夹路径,构成  BoxName::虚拟文件夹名/文件名
-	int handle;
+	string BoxFullPath;//box中的虚拟文件夹路径,构成  BoxName/虚拟文件夹名/文件名
+	int BranchNumber;
+	int threadhandle;//储存当前调用该文件的线程号，如果没有则为0
 
 	SysFile(){
 
@@ -53,7 +57,8 @@ public:
 		BoxName = "";
 		FullPath = "";
 		BoxFullPath = "";
-		handle = 0;
+		threadhandle = 0;
+		BranchNumber = 0;
 	}
 
 	//默认文件储存在box的根目录下
@@ -63,6 +68,7 @@ public:
 		BoxName = BoxName_input;
 		FileName = GetFileNameFromFullPath(FullPath);
 		BoxFullPath = BoxName+"::"+FileName;
+		BranchNumber = 0;
 	}
 
 	SysFile(string FullPath_input,string BoxName_input,string BoxFullPath){
@@ -71,6 +77,7 @@ public:
 		FileName = GetFileNameFromFullPath(FullPath);
 		BoxName = BoxName_input;
 		BoxFullPath = BoxFullPath;
+		BranchNumber = 0;
 	}
 
 	SysFile operator=(SysFile file_in){
@@ -78,6 +85,7 @@ public:
 		this->BoxName = file_in.BoxName;
 		this->FullPath = file_in.FullPath;
 		this->BoxFullPath = file_in.BoxFullPath;
+		this->BranchNumber = file_in.BranchNumber;
 
 		return *this;
 	}
@@ -86,10 +94,35 @@ public:
 		FullPath = FullPath_input;
 		BoxName = BoxName_input;
 		FileName = GetFileNameFromFullPath(FullPath);
-		BoxFullPath = BoxName+"::"+FileName;
+		BoxFullPath = BoxName+"/"+FileName;
 	}
 };
 	
+/*
+  该结构主要是传入backupfile函数使用
+  //tap 为文件更改类型 created 1 changed 2 deleted 3 renamed 4
+*/
+
+struct Backupinfile{
+
+	int tap;//created 1 changed 2 created 3 renamed 4
+	string FullPath;
+	string OldFullPath;
+	//created 1 changed 2 created 3 renamed 4
+	Backupinfile(int tap_in,string FullPath_in,string OldFullPath_in){
+		tap = tap_in;
+		FullPath = FullPath_in;
+		OldFullPath = OldFullPath_in;
+	}
+	//created 1 changed 2 created 3 renamed 4
+	Backupinfile(int tap_in,string FullPath_in){
+		tap = tap_in;
+		FullPath = FullPath_in;
+		OldFullPath = "";
+	}
+
+};
+
 //global var
 //同步列表
 int len_SysFileList = 1000;
@@ -97,7 +130,19 @@ SysFile *SysFileList = new SysFile [len_SysFileList];
 int numSaved_SysFileList = 0;
 
 
-//从全路径截取出文件名
+/*
+   从全路径截取出文件名
+   例如:想从全路径"folder1/folder2/file.txt"得到"file.txt"
+        则GetFileNameFromFullPath("folder1/folder2/file.txt");
+   ============================================================
+   in:
+	FullPath 要截取的全路径
+   ------------------------------------------------------------
+   out:(none)
+   ------------------------------------------------------------
+   return:
+	文件名
+*/
 string GetFileNameFromFullPath(string FullPath){
 
 
@@ -109,7 +154,17 @@ string GetFileNameFromFullPath(string FullPath){
 }
 
 
-//检查更改文档类型，并作出相应行为
+/*
+  返回传入文件的文件类型:文件或文件夹
+  ========================================
+  in:
+	e 要检查的文件
+  ----------------------------------------
+  out:(none)
+  ----------------------------------------
+  return:
+	返回文件类型
+*/
 int ScreenFileType(FileSystemEventArgs^ e){
 	//跳过$RECYCAL
 
@@ -132,12 +187,17 @@ int ScreenFileType(FileSystemEventArgs^ e){
 
 }
 
-
-	//返回FileNameFullPath在同步列表中的位置
-	//in:FileNameFullPath为要查找的文件全地址
-	//   pstart为从第几位开始
-	//out:在SysList中的位置,在找到第一个时停止
-	//如果文件不在同步列表则返回-1
+/*
+   返回FileNameFullPath在同步列表中的位置(返回值从1开始)
+   ==========================================================
+   in:
+	FileNameFullPath 要查找的文件在本地的全地址
+	pstart 为从同步列表的第几位开始
+   ----------------------------------------------------------
+   out:
+	在SysList中的位置,在找到第一个时停止
+	如果文件不在同步列表则返回-1
+*/
 int PositionOfSysList(string FileNameFullPath,int pstart = 1){
 
 	int position = pstart-1;
@@ -173,7 +233,14 @@ string GetBackUpPath(){
 	return backuppath;
 }
 
-//得到压缩文件名
+/*
+   当文件需要备份时，调用该函数可以生成一个唯一的文件名
+   构成格式为: <时间组成的数字>_UserName
+   in:(none)
+   out:(none)
+   return:
+	文件名
+*/
 string GetTarFileName(){
 	string tarfilename;
 
@@ -186,30 +253,37 @@ string GetTarFileName(){
 }
 
 
-//文件改变，将文件备份，，并将文件备份记录(备份压缩名)记录到box备份文档中
-//in:FileNameFullPath
-//out:0不是备份文件
-//	-1备份失败
-DWORD WINAPI BackUpFile(LPVOID lpParam){
+/*
+   调用该函数可以备份（压缩）在监控列表中的指定文件
+   in:
+	lpParam FileNameFullPath
+   out:
+	0 不是备份文件
+	-1 备份失败
+*/
 
-	string FileNameFullPath = string((char*)(lpParam));
+DWORD WINAPI BackUpFile(LPVOID lpParam){
+	Backupinfile filetap = *((Backupinfile*)lpParam);
+	string FileNameFullPath = filetap.FullPath;
 	int position = 1;
 	string backupfilename = GetTarFileName();
 
 	position = PositionOfSysList(FileNameFullPath);
-	SysFileList[position].handle = GetCurrentThreadId();
+	SysFileList[position].threadhandle = GetCurrentThreadId();
 
 	
 
 	if( position>0 ){
 
 		Sleep(1000);
-		if(SysFileList[position].handle != GetCurrentThreadId())
+		if(SysFileList[position].threadhandle != GetCurrentThreadId())
 			return 0;
 
 		//调用压缩备份函数
 		cout<<"备份"<<endl;
 		system(("makecab /d compressiontype=mszip " + FileNameFullPath + " " + GetBackUpPath() + backupfilename + ">" + " " + GetBackUpPath() + "log").c_str());
+
+
 
 	}else{
 		return 0;
@@ -219,6 +293,11 @@ DWORD WINAPI BackUpFile(LPVOID lpParam){
 
 		//找到box的备份文档，将更改信息添加进去
 		//NOT
+			/*
+			|将备份信息压入主文件log中
+			|将备份信息压入box文件log中
+			|
+			*/
 		break;
 		(position = PositionOfSysList(FileNameFullPath,position));
 	}while(position>=0);
@@ -226,7 +305,14 @@ DWORD WINAPI BackUpFile(LPVOID lpParam){
 	return 1;
 }
 
-
+/*
+  当检测到文件被创建时，在一些情况，需要跳过不做出反应
+  in:
+	e 为动作句柄
+  return:
+	true 需要跳过
+	false 不跳过
+*/
 bool JumpWatherOnCreated(FileSystemEventArgs^ e){
 
 	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
@@ -244,6 +330,15 @@ bool JumpWatherOnCreated(FileSystemEventArgs^ e){
 
 	return false;
 }
+
+/*
+  当检测到文件发生改变时，在一些情况，需要跳过不做出反应
+  in:
+	e 为动作句柄
+  return:
+	true 需要跳过
+	false 不跳过
+*/
 bool JumpWatherOnChanged(FileSystemEventArgs^ e){
 	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
 
@@ -262,6 +357,14 @@ bool JumpWatherOnChanged(FileSystemEventArgs^ e){
 	return false;
 }
 
+/*
+  当检测到文件被删除时，在一些情况，需要跳过不做出反应
+  in:
+	e 为动作句柄
+  return:
+	true 需要跳过
+	false 不跳过
+*/
 bool JumpWatherOndeleted(FileSystemEventArgs^ e){
 	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
 
@@ -278,6 +381,17 @@ bool JumpWatherOndeleted(FileSystemEventArgs^ e){
 	return false;
 }
 
+
+/*
+  当检测到文件被重命名时，在一些情况，需要跳过不做出反应
+  in:
+	e 为动作句柄
+  return:
+	true 需要跳过
+	false 不跳过
+
+	*注意:像office的文档文件，当保存时，触发的不是changed而是renamed
+*/
 bool JumpWatherOnRenamed(RenamedEventArgs^ e){
 	string FileNameNew = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
 	string FileNameOld = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
@@ -295,10 +409,17 @@ bool JumpWatherOnRenamed(RenamedEventArgs^ e){
 	return false;
 
 }
+
+/*
+   Watcher类，负责监控文件目录，并根据目录下文件不同反应做出相应改变
+
+*/
 public ref class Watcher
 {
 private:
-   // Define the event handlers.
+   /*
+      当检测到文件创建改变时调用的函数
+   */
    static void OnCreated( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is created.
@@ -309,6 +430,9 @@ private:
 	  
    }
 
+   /*
+      当检测到文件被删除时调用的函数
+   */
      static void OnDeleted( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
@@ -319,6 +443,9 @@ private:
 	  
    }
 
+   /*
+      当检测到文件发生改变时调用的函数
+   */
       static void OnChanged( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
@@ -332,11 +459,14 @@ private:
 
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 
-	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath), 0, NULL);
-
+	  Backupinfile filetap(2,(char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath),(char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
+	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, &filetap, 0, NULL);
 	  
    }
 
+   /*
+      当检测到文件重命名时调用的函数
+   */
    static void OnRenamed( Object^ /*source*/, RenamedEventArgs^ e )
    {
       // Specify what is done when a file is renamed.
@@ -345,12 +475,19 @@ private:
 	   }
       Console::WriteLine( "File: {0} renamed to {1}", e->OldFullPath, e->FullPath );
 
-	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath), 0, NULL);
+	  Backupinfile filetap(4,(char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath),(char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
+	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, &filetap, 0, NULL);
 
    }
 
 public:
    [PermissionSet(SecurityAction::Demand, Name="FullTrust")]
+
+   /*
+     监控文件的主要函数，调用该函数监控某一文件夹下的文件变动
+	 in:
+		MonitorPath 需要监控的文件目录
+   */
    int static monitor(String^ MonitorPath)
    {
 	   /*

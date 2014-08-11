@@ -1,0 +1,64 @@
+1.每一个box下都有一个日志文档
+	该日志文档中记录着该box的文件操作。
+
+	服务器上储存的是主日志文档，所有本地上传的文档都要和主文档比较，合并，下载
+
+2.每个box下存在branch文件夹，文件夹中是以branch的number号命名的文件夹
+branchnumber号为时间
+	例如:
+	<branch>
+		<FileInBranch>文本文件，记录文件BoxFullPath->branchNumber</FileInBranch>
+		<BranchName>记录branchnumber对应的branchName</BranchName>
+
+		<234456676>
+			<FileName>文本文件，记录文件的boxFullPath</FileName>
+			<log>文本文件，记录该分支文件的更改记录</log>
+		</234456676>
+
+		<23213546>
+
+		</23213546>
+	</branch>
+
+3.整个文档结构
+<root>
+	<log>文档,记录全部更改信息</log>
+		|344546/tFilename/tChanged/tbackupnumber
+		*注意:主分支也存在branchnumber
+		
+	<boxs>
+		<boxname1>
+			<log>文档,记录box中文件的更改历史</log>
+			<boxtree>xml文件,记录该box tree</boxtree>
+
+		<branch>
+			<FileInBranch>文本文件，记录文件BoxFullPath->branchNumber</FileInBranch>
+			<BranchName>记录branchnumber对应的branchName</BranchName>
+
+			<234456676>
+				<FileName>文本文件，记录文件的boxFullPath</FileName>
+				<log>文本文件，记录该分支文件的更改记录</log>
+			</234456676>
+
+			<23213546>
+
+			</23213546>
+		</branch>
+
+			<files>各种备份文件</files>
+		</boxname1>
+	</boxs>
+</root>
+
+
+-----------------------------------------------------------------------------------------------------
+接下来要做的
+1.将branchNumber添加进
+  同步列表类要添加一个BranchNumber
+
+2.将更改信息压入log文件中
+
+3.当同步列表中文件的路径发生变化时，要做出相应反应
+例如:D:/folder1/folder2/file.txt为检测文件
+	当folder2 renamed的时，要将同步列表中的文件路径跟着更改
+	当folder2 移除时同样要做出反应
