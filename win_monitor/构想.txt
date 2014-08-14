@@ -25,7 +25,7 @@ branchnumber号为时间
 	<log>文档,记录全部更改信息</log>
 		|344546/tFilename/tChanged/tbackupnumber
 		*注意:主分支也存在branchnumber
-		
+	<PresentBoxBranchNumber>文档，记录当前box所处branchnumber</PresentBoxBranchNumber>
 	<boxs>
 		<boxname1>
 			<log>文档,记录box中文件的更改历史</log>
@@ -53,12 +53,37 @@ branchnumber号为时间
 
 -----------------------------------------------------------------------------------------------------
 接下来要做的
-1.将branchNumber添加进
-  同步列表类要添加一个BranchNumber
 
-2.将更改信息压入log文件中
+2.将更改信息压入log文件中，
+log文件只记录boxFullPATH>CHANGED>BACKUPNUMBER
+只压入box的log中
 
 3.当同步列表中文件的路径发生变化时，要做出相应反应
 例如:D:/folder1/folder2/file.txt为检测文件
 	当folder2 renamed的时，要将同步列表中的文件路径跟着更改
 	当folder2 移除时同样要做出反应
+
+====================================================================================
+只能分享box
+
+一个box中的file可以对应多个文件，
+一个磁盘文件可以对应多个box中的文件
+
+
+6.一个box关联到多个disc文件时，要注意一个文件更改所有文件都得跟着更改
+	问题：当有的文件仍在调用时怎么办？
+	目前线索：NtQuerySystemInfomation函数可以查看文件占用进程号
+
+7.添加 添加分支函数
+8.切换分支函数
+9.要添加 filename 不能有/符号
+
+10 如果在分支中删除了一个文件，则在其他分支也将会删除该文件
+如果在分之中新建了一个文件，则在其他分支也将会建立该文件，
+对分支里某个文件添加关联，则其他分支再切换的时候会把关联复制过来
+如果删除关联，则其他分支也会删除关联
+
+
+AddFileToSys函数待完善
+
+11 文件重命名函数还没有写
