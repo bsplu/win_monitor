@@ -20,7 +20,7 @@ using namespace System::Security::Permissions;
 using namespace std;
 using namespace System::Runtime::InteropServices;
 
-const string NAME_PRESENT_BOX_BRANCH_NUMBER_TXT="PresentBoxBranchNumber.txt";
+
 const string NAME_ROOT_SYSLIST_LOG = "RootSyslist.log";
 
 
@@ -31,7 +31,7 @@ int ScreenFileType(FileSystemEventArgs^ e);
 int PositionOfSysList(string FileNameFullPathInDisc,int pstart);
 DWORD WINAPI BackUpFile(LPVOID lpParam);
 string GetTarFileName();
-string GetUserName();//NOT
+string Getc4rUserName();//NOT
 string GetBackUpPath();//NOT
 bool JumpWatherOnCreated(FileSystemEventArgs^ e);
 bool JumpWatherOnChanged(FileSystemEventArgs^ e);
@@ -54,8 +54,7 @@ class SysFile;
 class SysFile{
 
 public:
-	string FileName;
-	string BoxName;//box名称
+	//string BoxName;//box名称
 	string FullPathInDisc;//文件在磁盘的路径
 	string FullPathInBox;//box中的虚拟文件夹路径,构成  BoxName/虚拟文件夹名/文件名
 	int BranchNumber;
@@ -63,8 +62,6 @@ public:
 
 	SysFile(){
 
-		FileName = "";
-		BoxName = "";
 		FullPathInDisc = "";
 		FullPathInBox = "";
 		threadhandle = 0;
@@ -75,8 +72,6 @@ public:
 	SysFile(string FullPathInDisc_input,string FullPathInBox_in){
 
 		FullPathInDisc = FullPathInDisc_input;
-		BoxName = GetBoxNameFromFullPathInBox(FullPathInBox_in);
-		FileName = GetFileNameFromFullPath(FullPathInDisc);
 		FullPathInBox = FullPathInBox_in;
 		BranchNumber = 0;
 		threadhandle = 0;
@@ -85,8 +80,6 @@ public:
 	SysFile(string FullPathInDisc_input,string FullPathInBox_in,int BranchNumber_in){
 
 		FullPathInDisc = FullPathInDisc_input;
-		FileName = GetFileNameFromFullPath(FullPathInDisc);
-		BoxName = GetBoxNameFromFullPathInBox(FullPathInBox_in);
 		FullPathInBox = FullPathInBox_in;
 		BranchNumber = BranchNumber_in;
 		threadhandle = 0;
@@ -94,8 +87,6 @@ public:
 	}
 
 	SysFile operator=(SysFile file_in){
-		this->FileName = file_in.FileName;
-		this->BoxName = file_in.BoxName;
 		this->FullPathInDisc = file_in.FullPathInDisc;
 		this->FullPathInBox = file_in.FullPathInBox;
 		this->BranchNumber = file_in.BranchNumber;
@@ -105,8 +96,6 @@ public:
 
 	void addSysFile(string FullPathInDisc_input,string FullPathInBox_in,int BranchNumber_in){
 		FullPathInDisc = FullPathInDisc_input;
-		FileName = GetFileNameFromFullPath(FullPathInDisc);
-		BoxName = GetBoxNameFromFullPathInBox(FullPathInBox_in);
 		FullPathInBox = FullPathInBox_in;
 		BranchNumber = BranchNumber_in;
 		threadhandle = 0;
@@ -123,18 +112,21 @@ public:
 	int  tap;//created 1 changed 2 created 3 renamed 4
 	string  FullPathInDisc;
 	string  OldFullPathInDisc;
+
 	//created 1 changed 2 created 3 renamed 4
 	
 	Backupinfile(int tap_in,string FullPathInDisc_in,string OldFullPathInDisc_in){
 		tap = tap_in;
 		FullPathInDisc = FullPathInDisc_in;
 		OldFullPathInDisc = OldFullPathInDisc_in;
+
 	}
 	//created 1 changed 2 created 3 renamed 4
 	Backupinfile(int tap_in,string FullPathInDisc_in){
 		tap = tap_in;
 		FullPathInDisc = FullPathInDisc_in;
 		OldFullPathInDisc = "";
+
 	}
 
 	
@@ -142,7 +134,6 @@ public:
 		this->tap = a.tap;
 		this->FullPathInDisc = a.FullPathInDisc;
 		this->OldFullPathInDisc = a.OldFullPathInDisc;
-
 		return (*this);
 	}
 	
@@ -150,10 +141,11 @@ public:
 
 //global var
 //同步列表
-int len_SysFileList = 1000;
+int len_SysFileList = 2;
 SysFile *SysFileList = new SysFile [len_SysFileList];
 int numSaved_SysFileList = 0;
 
+ptree PTROOT_files;
 
 /*
    同步列表扩容
@@ -280,8 +272,13 @@ int ScreenFileType(FileSystemEventArgs^ e){
 
 	_finddata_t file;
 	long lf;
-	if ((lf = _findfirst( (char*)(void*)System::Runtime::InteropServices::Marshal::StringToHGlobalAnsi(e->FullPath), &file)) == -1l) {
+	char * paths2c = (char*)(void*)System::Runtime::InteropServices::Marshal::StringToHGlobalAnsi(e->FullPath);
+	string filepath = paths2c;
+	Marshal::FreeHGlobal(IntPtr(paths2c));
+
+	if ((lf = _findfirst( filepath.c_str(), &file)) == -1l) {
 		cout << "该文件或目录不存在！\n";
+
 		return -1;
 	}else{
 		return file.attrib ;
@@ -338,9 +335,45 @@ int PositonOfFolderFullPathInSyslist(string FolderFullPath,int start = 1){
 	return -1;
 }
 
+/*
+	将所有box的xml更新
+	in:
+		pt_root 根树
+	out:(none)
+	return:
+		1 成功
+		-1 失败,没有boxs分支
+*/
+int UpdateAllBoxxml(ptree pt_root){
 
+	try{
+		ptree BoxsNode = pt_root.get_child("root.boxs");
+		
+		for(auto it=BoxsNode.begin();it != BoxsNode.end();++it){
+				ptree BoxNode;
+				BoxNode.add_child("box",it->second);
+				filetree::write_xml_CHECKPATH(GetBackUpPath() + it->second.get<string>("name",""),BoxNode);
+		}
+	}
+	catch(...){
+		return -1;
+	}	
 
-int RenamedFolderPathInSysList(string OldPath,string NewPath){
+	return 1;
+
+}
+
+/*
+	将SysFileList中磁盘地址中OldPath替换为NewPath
+	检测到磁盘地址更改时要使用该函数
+	in:
+		OldPath 文件或文件夹旧的全地址
+		NewPath 文件或文件夹新的全地址
+	out:(none)
+	return:
+		1成功
+*/
+int RenamedFilePathInDisc(string OldPath,string NewPath){
 	//如果结尾带"\\",去掉，这样文件renamed也适合
 	if(OldPath.find_last_of("\\") == (OldPath.length()-1)){
 		OldPath.erase(OldPath.find_last_of("\\"));
@@ -372,26 +405,12 @@ int RenamedFolderPathInSysList(string OldPath,string NewPath){
 
 */
 int GetPresentBoxBranchNumber(string BoxName){
-	FILE* fp = NULL; 
-	fp = fopen((GetBackUpPath()+NAME_PRESENT_BOX_BRANCH_NUMBER_TXT).c_str(),"r");
-	if(NULL==fp)
-	{
-		return -1;
-	}
-	char strtxt[1024];
-	string BoxNameRead;
-	int BranchNumberRead;
-	while(!feof(fp)){
-		fgets(strtxt,1024,fp);
-		BoxNameRead = string(strtxt).substr(0,string(strtxt).find(">"));
-		BranchNumberRead = atoi((string(strtxt).substr(string(strtxt).find(">")+1)).c_str());
-		if(BoxNameRead == BoxName){
-			fclose(fp);
-			return BranchNumberRead;
+	
+	for(int i=0;i<numSaved_SysFileList;i++){
+		if(GetBoxNameFromFullPathInBox( SysFileList[i].FullPathInBox) == BoxName){
+			return SysFileList[i].BranchNumber;
 		}
 	}
-	
-	fclose(fp);
 	return -1;
 	
 }
@@ -410,10 +429,7 @@ int GetPresentBoxBranchNumber(string BoxName){
 	-2 为box存在相同名字的文件
 */
 int AddFileToSys(string fileFullPathInDisc,string ToBoxPath,ptree& pt_root){
-	//NOT
-	/*
-	要判断fileFullPathInDisc ToBoxPath 是否已经在同步列表中了
-	*/
+	
 	string FileName = GetFileNameFromFullPath(fileFullPathInDisc);
 	int BranchNumber = 1;
 	string FullPathInBox;
@@ -432,33 +448,72 @@ int AddFileToSys(string fileFullPathInDisc,string ToBoxPath,ptree& pt_root){
 		BranchNumber = 1;
 	}
 
-	int return_value = AddFilePathToRoot(pt_root,FullPathInBox);
-	if(return_value != 1){
-		return return_value;
+	//检查文件是否已在同步列表
+	int posInSysList = PositionOfSysList(fileFullPathInDisc);
+
+	int existInBox = filetree::AddFilePathToRoot(pt_root,FullPathInBox);
+	if(existInBox == -1){
+		return existInBox;
 	}
 
-	//将文件添加至同步列表
-	SysFile File_in(fileFullPathInDisc,FullPathInBox,BranchNumber);
-	PutSysFileInSysList(File_in);
+	if(posInSysList > 0 && existInBox == -2){
+		//说明既存在列表又存在box中，可以return
+		return 1;
+	}else if(posInSysList > 0 && existInBox == 1){
+		//说明已经在别的box中添加
+		//添加box中的关联
+		string ExistedBoxPath = SysFileList[posInSysList-1].FullPathInBox;
+		filetree::AddFilePathToRoot(pt_root,FullPathInBox,ExistedBoxPath);
 
-	//更新syslist.log
-	write_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
+		UpdateAllBoxxml(pt_root);
+
+		filetree::write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
+
+	}else if(posInSysList <0 && existInBox == -2){
+		//说明要把文件挂载到已有的文件节点上，需要比较已有文件是否相同，不同则会建立分支
+		//当前不支持该功能
+		return -1;
+	}else if(posInSysList <0 && existInBox == 1){
+		//完全没找到
+
+		//将文件添加至同步列表
+		SysFile File_in(fileFullPathInDisc,FullPathInBox,BranchNumber);
+		PutSysFileInSysList(File_in);
+
+			//更新syslist.log
+		write_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
 	
-	stringstream sBranchNumber;
-	sBranchNumber << BranchNumber;
-	write_box_xml(pt_root,BoxName,GetBackUpPath()+"boxs\\"+BoxName+"\\branches\\"+sBranchNumber.str()+"\\ptreebox.xml");
-	ofstream fout(GetBackUpPath()+"boxs\\"+BoxName+"\\branches\\branchnumber.txt",ios::app);
-	fout<<BranchNumber<<endl;
-	fout.close();
-	write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
+		stringstream sBranchNumber;
+		sBranchNumber << BranchNumber;
+		filetree::write_box_xml(pt_root,BoxName,GetBackUpPath()+"boxs\\"+BoxName+"\\ptreebox.xml");
+
+		//写入branchnumber
+		fstream fout(GetBackUpPath()+"boxs\\"+BoxName+"\\branchnumber.txt",ios::app);
+		int inbranchnumber = -1;
+		while(fout){
+			fout>>inbranchnumber;
+			if(fout.fail()){
+				break;
+			}else if(inbranchnumber == BranchNumber){
+				break;
+			}
+		}
+		fout.clear();
+		if(inbranchnumber != BranchNumber)
+			fout<<BranchNumber<<endl;
+
+		fout.close();
+
+		filetree::write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
 	
 
-	//备份
-	Backupinfile *filetap = new Backupinfile(1,fileFullPathInDisc);
-	HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
-	WaitForSingleObject(hThread, INFINITE);  
-	CloseHandle(hThread);  
-	
+		//备份
+		Backupinfile *filetap = new Backupinfile(1,fileFullPathInDisc);
+		HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
+		WaitForSingleObject(hThread, INFINITE);  
+		CloseHandle(hThread);  
+
+	}
 	return 1;
 }
 
@@ -474,9 +529,8 @@ int AddFileToSys(string fileFullPathInDisc,string ToBoxPath,ptree& pt_root){
 		-1 失败，OldPath NewPath更改不止一处
 		1成功
 */
-int RenameFolderInBoxName(ptree& pt_root,string OldPath,string NewPath){
-	//还要添加更改boxname的函数
-		
+int RenamedFolderPathInRootWUpxml(ptree& pt_root,string OldPath,string NewPath){
+
 	if(OldPath == "" || NewPath == ""){
 		return 1;
 	}
@@ -502,90 +556,99 @@ int RenameFolderInBoxName(ptree& pt_root,string OldPath,string NewPath){
 		return -1;
 	}
 
-	bool changeboxname = false;
 
 	if(GetBoxNameFromFullPathInBox(OldPath) == OldPath){
-		changeboxname = true;
+		//更改boxname
+		system(
+			("rename " + GetBackUpPath() + GetBoxNameFromFullPathInBox(OldPath) + " " 
+			+ GetBoxNameFromFullPathInBox(NewPath)).c_str());
 	}
 	//更改同步列表
 	for(int i=0;i<numSaved_SysFileList;i++){
 		string str = SysFileList[i].FullPathInBox;
 		if(str.find(OldPath) < str.length()-unsigned(1)){
 			SysFileList[i].FullPathInBox = NewPath+str.substr(OldPath.length());
-			SysFileList[i].BoxName = GetBoxNameFromFullPathInBox(SysFileList[i].FullPathInBox);
 		}
 	}
 
-
-	//更改tree
-	bool lastfolder = false;
-	string itor = OldPath;
-	if(itor != "" && itor.find("/") >= int(itor.length())){
-		lastfolder = true;
-	}
-
-	//遍历branches文件夹，将里面的每一个box都更改一下
-	try{
-		for(auto itbox = pt_root.get_child("root.boxs").begin(); itbox != pt_root.get_child("root.boxs").end();++itbox){
-			//获得各branchnumber
-			const int MAX_BRANCHNUMBER = 1000;
-			int branchnumber[MAX_BRANCHNUMBER];
-			int num_branchnumber = 0;
-
-			string BoxName = itbox->second.get<string>("name");
-			ifstream fin(GetBackUpPath()+"boxs\\"+BoxName+"\\branches\\branchnumber.txt");//只读
-			if(!fin){
-				return -1;
-			}
-			while(fin){
-				  
-				fin>>branchnumber[num_branchnumber];
-				if(fin.fail()) {  
-					 break;  
-				}
-				cout<<branchnumber[num_branchnumber]<<endl;
-				num_branchnumber++;
-			};
-
-			fin.close();
-			for(int i=0;i<num_branchnumber;i++){
-				ptree BoxNode;
-				stringstream sBranchNumber;
-				sBranchNumber << branchnumber[i];
-				read_xml_CHECKPATH(GetBackUpPath()+"boxs\\"+BoxName+"\\branches\\" + sBranchNumber.str() +"\\ptreebox.xml",BoxNode);
-				if(lastfolder && BoxNode.get_child("box").get<string>("name","") == itor){
-					BoxNode.get_child("box").put("name",GetFileNameFromFullPath(NewPath,"/"));
-					RenamedFolderPathInNode(BoxNode.get_child("box"),OldPath,NewPath);
-				}else if(itor != "" && (!lastfolder) && BoxNode.get_child("box").get<string>("name","") == GetBoxNameFromFullPathInBox(itor)){
-					RenamedFolderPathInNode(BoxNode.get_child("box"),OldPath,NewPath,itor.substr(itor.find("/")+1));
-				}else{
-					RenamedFolderPathInNode(BoxNode.get_child("box"),OldPath,NewPath);
-				}
-				//重新写tree
-				write_xml_CHECKPATH(GetBackUpPath()+"boxs\\"+BoxName+"\\branches\\" + sBranchNumber.str() +"\\ptreebox.xml",BoxNode);
-			}
-
-			if(changeboxname){
-				system(("rename " + GetBackUpPath()+"boxs\\"+BoxName + " " + NewPath ).c_str());
-			}
-		}		
-	}
-	catch(...){
-
-	}
-	if(RenamedFolderPathInRoot(pt_root,OldPath,NewPath) == -1){
+	if(filetree::RenamedFolderPathInRoot(pt_root,OldPath,NewPath) == -1){
 		return -1;
 	}
 
+	UpdateAllBoxxml(pt_root);
 	write_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
-	write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
+	filetree::write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
 
 	return 1;
 
 }
 
+/*
+	改变box中的虚拟文件名称
+	in:
+		pt_root 根box
+		OldPath 原文件的全路径 
+		NewPath 新文件的全路径
+	out:
+		pt_root 根box
+	return:
+		-1 失败，OldPath NewPath更改不止一处
+		1成功
+*/
+int RenamedFilePathInRootWUpxml(ptree& pt_root,string OldPath,string NewPath){
+
+	
+	if(OldPath == "" || NewPath == ""){
+		return 1;
+	}
+
+	//判断最后一位是否为'/'
+	if(OldPath.find_last_of("/") == (OldPath.length()-1)){
+		return -1;
+	}else{
+
+	}
+
+	if(NewPath.find_last_of("/") == (NewPath.length()-1)){
+		return -1;
+	}else{
+
+	}
+
+	//判断一下是否只有最后一个文件名字不同
+	if(OldPath.substr(0,OldPath.find_last_of("/")>(OldPath.length()-unsigned(1))?
+		0:OldPath.find_last_of("/")) != 
+		NewPath.substr(0,OldPath.find_last_of("/")>(NewPath.length()-unsigned(1))?
+		0:NewPath.find_last_of("/"))){
+		return -1;
+	}
+
+	//更改同步列表
+	for(int i=0;i<numSaved_SysFileList;i++){
+		string str = SysFileList[i].FullPathInBox;
+		if(str.find(OldPath) < str.length()-unsigned(1)){
+			SysFileList[i].FullPathInBox = NewPath+str.substr(OldPath.length());
+		}
+	}
+
+
+
+
+	if(filetree::RenamedFilePathInRoot(pt_root,OldPath,NewPath) == -1){
+		return -1;
+	}
+
+	UpdateAllBoxxml(pt_root);
+
+	write_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
+	filetree::write_xml_CHECKPATH(GetBackUpPath()+"ptreeroot.xml",pt_root);
+	
+	return 1;
+
+}
+
 //获得用户名
-string GetUserName(){
+string Getc4rUserName(){
 	string username="";
 
 	//NOT
@@ -618,12 +681,192 @@ string GetTarFileName(){
 		stringstream stime;
 		stime << int(time(NULL));
 
-		tarfilename = (stime.str() + "_" + GetUserName() + ".zip").c_str();
+		tarfilename = ( Getc4rUserName() + "_" + stime.str() + ".zip").c_str();
 
 		return tarfilename;
 }
 
+/*
+	将储存文件更改的xml文档读入
+	in:
+		BoxName 要读文档所属的boxname
+		pt_files 储存文档的树
+		BranchNumber 分支号，默认为box当前分支号
+	out:
+		pt_files 返回储存文档的树
+	return:
+		1 成功
+		-1 失败
+*/
+int read_filelog_xml(string BoxName,ptree& pt_files,int BranchNumber = 0){
 
+	if(BranchNumber == 0)
+		BranchNumber = GetPresentBoxBranchNumber(BoxName);
+
+	stringstream sBranchnumber;
+	sBranchnumber<<BranchNumber;
+
+	return filetree::read_xml_CHECKPATH(GetBackUpPath() +"boxs\\" + BoxName + "\\filechange_" + sBranchnumber.str() +".xml" , pt_files);
+
+}
+
+/*
+	储存文件更改信息
+	in:
+		BoxName 要读文档所属的boxname
+		pt_files 储存文档的树
+		BranchNumber 分支号，默认为box当前分支号
+	return:
+		1 成功
+		-1 失败
+*/
+int write_filelog_xml(string BoxName,ptree pt_Box,int BranchNumber = 0){
+
+	if(BranchNumber == 0)
+		BranchNumber = GetPresentBoxBranchNumber(BoxName);
+
+	stringstream sBranchnumber;
+	sBranchnumber<<BranchNumber;
+
+	pt_Box.put("root.lasteditor",Getc4rUserName());
+	pt_Box.put("root.lastedittime",time(NULL));
+
+	return filetree::write_xml_CHECKPATH(GetBackUpPath() + "boxs\\" + BoxName + "\\filechange_" + sBranchnumber.str() +".xml"  , pt_Box);
+}
+
+/*
+	将备份信息加入到备份树节点，一般先调用read_filelog_xml，该函数后会调用write_filelog_xml
+	in:
+		pt_Box 备份树的box节点
+		FullPathInBox 备份文件在树中的全地址
+		TarFileName 打包的名字 
+					格式是:UserName_BackUpnumber.zip 
+					UserName请替换为当前用户名字 BackUpnumber请替换为备份号
+		ChangeTap 为改动类型
+			1 | 添加文件
+			2 | 文件变动
+			3 | 文件删除
+			4 | 文件重命名
+			5 | commit
+	out:
+		pt_Box 为更改后的备份树
+
+	return:
+		1 成功
+		-1 失败,主要可能文件不存在，或changtap不符合
+	
+*/
+int AddChangeMesageToPtreeFile(ptree & pt_Box,string FullPathInBox,string TarFileName,
+							   int ChangeTap,bool writePtree = false){
+
+	string strchangtap;
+	switch (ChangeTap)
+	{
+	case 1:
+		strchangtap = "Add";
+		break;
+	case 2:
+		strchangtap = "Chg";
+		break;
+	case 3:
+		strchangtap = "Del";
+		break;
+	case 4:
+		strchangtap = "Rnm";
+		break;
+	case 5:
+		strchangtap = "Cmm";//commit
+		break;
+	default:
+		return -1;
+		break;
+	}
+
+
+	try{
+
+		ptree& pt_files = pt_Box.get_child("root.files");
+
+		for(auto it=pt_files.begin();it!=pt_files.end();++it){
+
+				if(it->second.get<string>("filepath","") == FullPathInBox){
+					it->second.add("changes.change",strchangtap + "_" + TarFileName);
+
+					if(writePtree){
+
+						write_filelog_xml(GetBoxNameFromFullPathInBox(FullPathInBox),pt_Box);
+					}
+					return 1;
+				}
+		}
+	}
+	catch(...){
+
+		if(strchangtap == "Add"){
+			pt_Box.add("root.creator",Getc4rUserName());
+			pt_Box.add("root.creattime",time(NULL));
+			pt_Box.add("root.lasteditor",Getc4rUserName());
+			pt_Box.add("root.lastedittime",time(NULL));
+			ptree pttemp;
+
+			pttemp.put("filepath",FullPathInBox);
+			pt_Box.add_child("root.files.file",pttemp);
+			ptree &pt_files = pt_Box.get_child("root.files");
+
+
+
+			for(auto it=pt_files.begin();it!=pt_files.end();++it){
+
+					if(it->second.get<string>("filepath","") == FullPathInBox){
+						it->second.add("changes.change",strchangtap + "_" + TarFileName);
+
+						if(writePtree){
+
+							write_filelog_xml(GetBoxNameFromFullPathInBox(FullPathInBox),pt_Box);
+						}
+						return 1;
+					}
+			}
+		}else{
+			return -1;
+		}
+	}
+
+
+
+	return -1;
+}
+
+
+/*
+	将备份信息存储到所有相关联的备份tree中
+*/
+int AddChangeMesageToAllPaths(ptree & pt_root,string FullPathInBoxChanged,string TarFileName,int ChangeTap ){
+
+	ptree ptfile;//指向备份树
+	if(read_filelog_xml(GetBoxNameFromFullPathInBox(FullPathInBoxChanged),ptfile) == -1){
+
+	}
+	AddChangeMesageToPtreeFile(ptfile,FullPathInBoxChanged,TarFileName,ChangeTap,true);
+	//首先找到FullPathInBoxChanged指向的文件
+	ptree* FileNode;
+	if(filetree::FindPtreeAdressByFullPath(pt_root,FullPathInBoxChanged,FileNode) == -1){
+		return 1;
+	}
+	try{
+		for(auto it=(*FileNode).get_child("otherpaths").begin();it != (*FileNode).get_child("otherpaths").end();++it){
+			string otherpath = it->second.get_value<string>();
+			ptfile.clear();
+			read_filelog_xml(GetBoxNameFromFullPathInBox(FullPathInBoxChanged),ptfile);
+			AddChangeMesageToPtreeFile(ptfile,FullPathInBoxChanged,TarFileName,ChangeTap,true);
+		}
+	}
+	catch(...){
+
+	}
+
+	return 1;
+}
 /*
    调用该函数可以备份（压缩）在监控列表中的指定文件
    in:
@@ -632,7 +875,6 @@ string GetTarFileName(){
 	0 不是备份文件
 	-1 备份失败
 */
-
 DWORD WINAPI BackUpFile(LPVOID lpParam){
 
 	Backupinfile* filetap = (Backupinfile*) lpParam;
@@ -649,37 +891,30 @@ DWORD WINAPI BackUpFile(LPVOID lpParam){
 		position = PositionOfSysList(FileFullPathInDisc);
 	}
 
-	SysFileList[position].threadhandle = GetCurrentThreadId();
+	SysFileList[position-1].threadhandle = GetCurrentThreadId();
  
 
 	if( position>0 ){
 
 		Sleep(1000);
-		if(SysFileList[position].threadhandle != GetCurrentThreadId())
+		if(SysFileList[position-1].threadhandle != GetCurrentThreadId())
 			return 0;
 
 		//调用压缩备份函数
 		cout<<"备份"<<endl;
 		system(("makecab /d compressiontype=mszip " + FileFullPathInDisc + " " + GetBackUpPath() + backupfilename + " >nul 2>nul" ).c_str());
-
+		
 
 	}else{
 		return 0;
 	}
 
-	do{
-
 		//找到box的备份文档，将更改信息添加进去
-		//NOT
-			/*
-			|将备份信息压入主文件log中
-			|将备份信息压入box文件log中
-			|
-			*/
-
-		break;
-		(position = PositionOfSysList(FileFullPathInDisc,position));
-	}while(position>=0);
+		
+		position = PositionOfSysList(FileFullPathInDisc,position);
+		string FullPathInBox = SysFileList[position-1].FullPathInBox;
+		cout<<FullPathInBox<<endl;
+		cout<<AddChangeMesageToAllPaths(PTROOT_files,FullPathInBox,backupfilename,(*filetap).tap)<<endl;
 
 
 	delete filetap;
@@ -695,10 +930,10 @@ DWORD WINAPI BackUpFile(LPVOID lpParam){
 	false 不跳过
 */
 bool JumpWatherOnCreated(FileSystemEventArgs^ e){
+	char * FileNames2c = (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath);
+	string FileName = GetFileNameFromFullPath(FileNames2c);
 
-	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
-
-
+	Marshal::FreeHGlobal(IntPtr(FileNames2c));
 	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
 		return true;
 	}else if(FileName.find_first_of("$") == 0){
@@ -721,7 +956,10 @@ bool JumpWatherOnCreated(FileSystemEventArgs^ e){
 	false 不跳过
 */
 bool JumpWatherOnChanged(FileSystemEventArgs^ e){
-	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+	char * FileNames2c = (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath);
+	string FileName = GetFileNameFromFullPath(FileNames2c);
+
+	Marshal::FreeHGlobal(IntPtr(FileNames2c));
 
 	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
 		return true;
@@ -747,7 +985,10 @@ bool JumpWatherOnChanged(FileSystemEventArgs^ e){
 	false 不跳过
 */
 bool JumpWatherOndeleted(FileSystemEventArgs^ e){
-	string FileName = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
+	char * FileNames2c = (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath);
+	string FileName = GetFileNameFromFullPath(FileNames2c);
+
+	Marshal::FreeHGlobal(IntPtr(FileNames2c));
 
 	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
 		return true;
@@ -774,8 +1015,14 @@ bool JumpWatherOndeleted(FileSystemEventArgs^ e){
 	*注意:像office的文档文件，当保存时，触发的不是changed而是renamed
 */
 bool JumpWatherOnRenamed(RenamedEventArgs^ e){
-	string FileNameNew = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
-	string FileNameOld = GetFileNameFromFullPath((char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
+
+	char * FileNames2c = (char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath);
+	string FileNameNew = GetFileNameFromFullPath(FileNames2c);
+	Marshal::FreeHGlobal(IntPtr(FileNames2c));
+	FileNames2c = (char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath);
+	string FileNameOld = GetFileNameFromFullPath(FileNames2c);
+	Marshal::FreeHGlobal(IntPtr(FileNames2c));
+
 
 	if(e->FullPath->IndexOf("$RECYCLE.BIN")>=0){
 		return true;
@@ -798,7 +1045,7 @@ bool JumpWatherOnRenamed(RenamedEventArgs^ e){
 public ref class Watcher
 {
 private:
-	static String^  MonitorPath; //监视路径
+	[ThreadStatic] static String^  MonitorPath; //监视路径
 
    /*
       当检测到文件创建改变时调用的函数
@@ -806,9 +1053,11 @@ private:
    static void OnCreated( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is created.
+	   /*
 		if(JumpWatherOnCreated(e)){
 				return ;
 		}
+		*/
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 	  
    }
@@ -819,9 +1068,11 @@ private:
      static void OnDeleted( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
+	   /*
 	   if(JumpWatherOndeleted(e)){
 				return ;
 		}
+		*/
 		Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 	  
    }
@@ -832,9 +1083,11 @@ private:
       static void OnChanged( Object^ /*source*/, FileSystemEventArgs^ e )
    {
       // Specify what is done when a file is deleted.
+	   /*
 	   if(JumpWatherOnChanged(e)){
 				return ;
 		}
+		*/
 
 		
 		//PositionOfSysList((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath));
@@ -842,10 +1095,13 @@ private:
 
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 
+
+	  /*debug
 	  Backupinfile *filetap = new Backupinfile(2,string((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath)));
 
 	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
-	  
+	  */
+	  //BackUpFile(filetap);
    }
 
    /*
@@ -854,19 +1110,22 @@ private:
    static void OnRenamed( Object^ /*source*/, RenamedEventArgs^ e )
    {
       // Specify what is done when a file is renamed.
+	   /*
 	   if(JumpWatherOnRenamed(e)){
 			return ;
 	   }
+	   */
       Console::WriteLine( "File: {0} renamed to {1}", e->OldFullPath, e->FullPath );
 
-	  //Backupinfile filetap(4,(char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath),(char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
+	  /*debug
 	  Backupinfile *filetap = new Backupinfile(4,(char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath),(char*)(void*)Marshal::StringToHGlobalAnsi(e->OldFullPath));
 	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
+	  */
 
    }
 
 public:
-	
+	static bool CheckSleep = false;
    [PermissionSet(SecurityAction::Demand, Name="FullTrust")]
    
    /*
@@ -875,31 +1134,22 @@ public:
 		MonitorPath 需要监控的文件目录
    */
 
-   void static monitor()
+   void monitor(Object^ Pathin)
    {
-	   /*
-      array<String^>^args = System::Environment::GetCommandLineArgs();
-	  int i = 0;
 
-      // If a directory is not specified, exit program.
-      if ( args->Length != 2 )
-      {
-         // Display the proper way to call the program.
-         Console::WriteLine( "Usage: Watcher.exe (directory)" );
-         return 0;
-      }
-	  */
 
       // Create a new FileSystemWatcher and set its properties.
       FileSystemWatcher^ watcher = gcnew FileSystemWatcher;
 
 	  //对路径的设定
+	  MonitorPath = (String^)Pathin;
       watcher->Path = MonitorPath;
 
+	  watcher->InternalBufferSize = 1048576;
 
       /* Watch for changes in LastAccess and LastWrite times, and 
           the renaming of files or directories. */
-      watcher->NotifyFilter = static_cast<NotifyFilters>(NotifyFilters::LastAccess |
+      watcher->NotifyFilter = static_cast<NotifyFilters>(//NotifyFilters::LastAccess |
             NotifyFilters::LastWrite | NotifyFilters::FileName | NotifyFilters::DirectoryName);//属性
 
       // Only watch text files.
@@ -921,33 +1171,36 @@ public:
       // Wait for the user to quit the program.
       Console::WriteLine( "Press \'q\' to quit the sample." );
 	  
-	  while ( Console::Read() != 'q');//当检测的文件或文件夹被删除时也应结束掉任务
-
+	  while ( !CheckSleep){
+		  
+		Sleep(1000);  
+	  };//当检测的文件或文件夹被删除时也应结束掉任务
+	 // while(1);
       return ;
    }
 
-   void static SetMonitorPath(String^ Path){
+   void  SetMonitorPath(String^ Path){
 	   MonitorPath = Path;
    }
 
-    static String^ GetMonitorPath(){
+    String^ GetMonitorPath(){
 		return MonitorPath;
    }
 };
 
+
 int main() {
+
+	read_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
+	//AddFileToSys("D:\\test\\4.txt","Box2/folde2",PTROOT_files);
+	Watcher^ a = gcnew Watcher;
+
+
+	Threading::Thread^ oThread1 = gcnew Threading::Thread (gcnew Threading:: ParameterizedThreadStart( a,&Watcher::monitor));
+	//Threading::Thread^ oThread2= gcnew Threading::Thread (gcnew Threading:: ParameterizedThreadStart( a,&Watcher::monitor));
+	oThread1->Start("C:\\");
+	//oThread2->Start("D:\\");
 	
-	ptree pt_root;
-	//read_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
-	AddFileToSys("D:\\test\\1.txt","BoxTest/folder1",pt_root);
-	//Watcher a;
-	//a.SetMonitorPath("D:\\");
-	
-	//Threading::Thread^ oThread = gcnew Threading::Thread (gcnew Threading::ThreadStart( a.monitor));
-
-	//oThread->Start();
-	RenameFolderInBoxName(pt_root,"BoxTest","Box1");
-
-
+	return 1;
 	//outchange();
 }
