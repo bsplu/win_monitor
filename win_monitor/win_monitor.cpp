@@ -1096,11 +1096,11 @@ private:
       Console::WriteLine( "File: {0} {1}", e->FullPath, e->ChangeType );
 
 
-	  /*debug
-	  Backupinfile *filetap = new Backupinfile(2,string((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath)));
+	  //debug
+	  //Backupinfile *filetap = new Backupinfile(2,string((char*)(void*)Marshal::StringToHGlobalAnsi(e->FullPath)));
 
-	  HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
-	  */
+	  //HANDLE hThread = CreateThread(NULL, 0, BackUpFile, filetap, 0, NULL);
+	  
 	  //BackUpFile(filetap);
    }
 
@@ -1169,13 +1169,13 @@ public:
       watcher->EnableRaisingEvents = true;
 	  
       // Wait for the user to quit the program.
-      Console::WriteLine( "Press \'q\' to quit the sample." );
+     // Console::WriteLine( "Press \'q\' to quit the sample." );
 	  
-	  while ( !CheckSleep){
-		  
+	  
+	while ( !CheckSleep){
 		Sleep(1000);  
 	  };//当检测的文件或文件夹被删除时也应结束掉任务
-	 // while(1);
+	//while(1);
       return ;
    }
 
@@ -1192,15 +1192,16 @@ public:
 int main() {
 
 	read_Syslist(GetBackUpPath()+NAME_ROOT_SYSLIST_LOG);
-	//AddFileToSys("D:\\test\\4.txt","Box2/folde2",PTROOT_files);
+	AddFileToSys("D:\\test\\4.txt","Box/folde",PTROOT_files);
 	Watcher^ a = gcnew Watcher;
 
 
 	Threading::Thread^ oThread1 = gcnew Threading::Thread (gcnew Threading:: ParameterizedThreadStart( a,&Watcher::monitor));
 	//Threading::Thread^ oThread2= gcnew Threading::Thread (gcnew Threading:: ParameterizedThreadStart( a,&Watcher::monitor));
-	oThread1->Start("C:\\");
+	oThread1->Start("D:\\");
 	//oThread2->Start("D:\\");
-	
+	//hello
 	return 1;
 	//outchange();
 }
+
